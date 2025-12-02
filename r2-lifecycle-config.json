@@ -1,0 +1,14 @@
+{
+  "rules": [
+    {
+      "id": "expire-after-90-days",
+      "status": "Enabled",
+      "filter": {
+        "prefix": "generated/"
+      },
+      "expiration": {
+        "days": 90
+      }
+    }
+  ]
+}
