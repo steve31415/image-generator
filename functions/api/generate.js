@@ -3,10 +3,8 @@
  * POST /api/generate
  */
 
-// Style parameters to append to prompts
+// Style description to append to prompts (text only, no Midjourney flags)
 const STYLE_DESCRIPTION = "In the style of a vintage 1920 Art Deco travel poster. Bold geometric shapes, limited color palette, strong lines, sophisticated retro futurist style.";
-const MOODBOARD_PROFILE = "--p a35c6a69-3196-4374-b049-bcd5b278375b m7318439057938186264";
-const STYLE_TAGS = "--style raw --v 6.1 --ar 4:3 --stylize 350 --variety 30";
 
 export async function onRequestPost(context) {
   const { request, env } = context;
@@ -29,8 +27,8 @@ export async function onRequestPost(context) {
       });
     }
 
-    // Build full prompt with style parameters
-    const fullPrompt = `${prompt}. ${STYLE_DESCRIPTION} ${MOODBOARD_PROFILE} ${STYLE_TAGS}`;
+    // Build full prompt with style description (no Midjourney flags - those are passed via API params)
+    const fullPrompt = `${prompt}. ${STYLE_DESCRIPTION}`;
     console.log(`[Generate] Full prompt: ${fullPrompt}`);
 
     // Generate image using APIFRAME Midjourney API
