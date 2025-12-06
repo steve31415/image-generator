@@ -71,7 +71,7 @@ echo ""
 if [ ! -f ".dev.vars" ]; then
     echo "📝 Creating .dev.vars file..."
     cp .dev.vars.example .dev.vars
-    echo "✅ Created .dev.vars - Please edit it and add your MIDJOURNEY_API_KEY"
+    echo "✅ Created .dev.vars - Please edit it and add your APIFRAME_API_KEY"
 else
     echo "ℹ️  .dev.vars already exists"
 fi
@@ -80,11 +80,11 @@ echo ""
 echo "✅ Setup complete!"
 echo ""
 echo "Next steps:"
-echo "1. Edit .dev.vars and add your MIDJOURNEY_API_KEY"
+echo "1. Edit .dev.vars and add your APIFRAME_API_KEY"
 echo "2. Run 'npm install' to install dependencies"
 echo "3. Run 'npm run dev' to start local development"
 echo "4. Run 'npm run deploy' to deploy to production"
 echo ""
 echo "For production, don't forget to set secrets:"
-echo "  wrangler secret put MIDJOURNEY_API_KEY"
+echo "  wrangler secret put APIFRAME_API_KEY"
 echo ""

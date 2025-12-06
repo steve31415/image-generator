@@ -1,6 +1,6 @@
 # Art Deco Image Generator
 
-A Cloudflare Pages application that generates images using the Midjourney API in the style of vintage 1920s Art Deco travel posters. Images are stored in Cloudflare R2 with automatic 90-day expiration.
+A Cloudflare Pages application that generates images using the Midjourney API (via APIFRAME) in the style of vintage 1920s Art Deco travel posters. Images are stored in Cloudflare R2 with automatic 90-day expiration.
 
 ## Features
 
@@ -16,7 +16,7 @@ A Cloudflare Pages application that generates images using the Midjourney API in
 - **Frontend**: Single-page HTML/CSS/JS application served from Cloudflare Pages
 - **Backend**: Cloudflare Pages Functions for API endpoints
 - **Storage**: Cloudflare R2 for image storage with metadata
-- **Image Generation**: Midjourney API integration
+- **Image Generation**: Midjourney API via APIFRAME (https://apiframe.ai)
 
 ## Project Structure
 
@@ -39,19 +39,16 @@ image-generator/
 
 1. **Cloudflare Account**: Sign up at https://cloudflare.com
 2. **Wrangler CLI**: Install globally with `npm install -g wrangler`
-3. **Midjourney API Access**: Obtain API key from your Midjourney API provider
+3. **APIFRAME API Key**: Sign up and get your API key at https://apiframe.ai
 
-### Supported Midjourney API Providers
+### About APIFRAME
 
-This application supports various Midjourney API providers. Common options include:
-- Official Midjourney API (if available)
-- Third-party services like:
-  - goapi.ai
-  - thenextleg.io
-  - useapi.net
-  - midjourneyapi.io
+This application uses APIFRAME (https://apiframe.ai) to access the Midjourney API. APIFRAME provides:
+- Reliable Midjourney API access without Discord bot complexity
+- Simple REST API with async task-based generation
+- Documentation at https://docs.apiframe.pro
 
-Configure your provider's endpoints in the environment variables.
+Get your API key from the APIFRAME dashboard: https://apiframe.ai/dashboard
 
 ## Setup Instructions
 
@@ -119,19 +116,15 @@ cp .dev.vars.example .dev.vars
 Edit `.dev.vars` and add your Midjourney API key:
 
 ```
-MIDJOURNEY_API_KEY=your_actual_api_key_here
+APIFRAME_API_KEY=your_actual_api_key_here
 ```
 
 For production deployment, set secrets using Wrangler:
 
 ```bash
-# Set required API key
-wrangler secret put MIDJOURNEY_API_KEY
-# When prompted, enter your API key
-
-# Optional: Set custom endpoints if using a different provider
-wrangler secret put MIDJOURNEY_API_ENDPOINT
-wrangler secret put MIDJOURNEY_API_STATUS_ENDPOINT
+# Set required APIFRAME API key
+wrangler secret put APIFRAME_API_KEY
+# When prompted, enter your API key from https://apiframe.ai/dashboard
 ```
 
 ### 5. Local Development
@@ -161,9 +154,7 @@ Alternatively, connect your repository to Cloudflare Pages for automatic deploym
    - **Build command**: (leave empty)
    - **Build output directory**: `public`
 5. Add environment variables in Pages settings:
-   - `MIDJOURNEY_API_KEY`
-   - `MIDJOURNEY_API_ENDPOINT` (optional)
-   - `MIDJOURNEY_API_STATUS_ENDPOINT` (optional)
+   - `APIFRAME_API_KEY` (get from https://apiframe.ai/dashboard)
 6. Add R2 bucket binding:
    - Variable name: `IMAGE_BUCKET`
    - R2 bucket: `midjourney-images`
@@ -276,28 +267,27 @@ const MOODBOARD_PROFILE = "--p your-profile-id";
 const STYLE_TAGS = "--style raw --v 6.1 --ar 16:9";
 ```
 
-### Using a Different Midjourney API Provider
+### APIFRAME Configuration
 
-Set the environment variables to match your provider's API:
+The application is pre-configured to use APIFRAME's endpoints:
+- **Imagine API**: `https://api.apiframe.pro/imagine`
+- **Fetch API**: `https://api.apiframe.pro/fetch`
 
-```bash
-wrangler secret put MIDJOURNEY_API_ENDPOINT
-# Enter your provider's generation endpoint
+No additional configuration is needed beyond setting your `APIFRAME_API_KEY`.
 
-wrangler secret put MIDJOURNEY_API_STATUS_ENDPOINT
-# Enter your provider's status endpoint (use {taskId} as placeholder)
-```
-
-You may also need to modify the API request/response handling in `functions/api/generate.js` to match your provider's format.
+For APIFRAME account management, credits, and usage tracking, visit:
+- Dashboard: https://apiframe.ai/dashboard
+- Documentation: https://docs.apiframe.pro
 
 ## Troubleshooting
 
 ### Images Not Generating
 
 1. Check browser console for errors (extensive logging is enabled)
-2. Verify `MIDJOURNEY_API_KEY` is set correctly
-3. Verify your Midjourney API provider is working
+2. Verify `APIFRAME_API_KEY` is set correctly
+3. Verify your APIFRAME account has credits (check at https://apiframe.ai/dashboard)
 4. Check Cloudflare Pages logs for backend errors
+5. Check browser console for detailed API error messages
 
 ### Images Not Storing
 
@@ -326,7 +316,7 @@ You may also need to modify the API request/response handling in `functions/api/
 
 ### Midjourney API Costs
 
-Varies by provider. Check with your specific Midjourney API service.
+Check your APIFRAME pricing at https://apiframe.ai for current rates.
 
 ### Example Calculation
 
@@ -351,5 +341,5 @@ MIT
 
 For issues and questions:
 1. Check the Cloudflare documentation: https://developers.cloudflare.com
-2. Review Midjourney API provider documentation
+2. Review APIFRAME documentation at https://docs.apiframe.pro
 3. Open an issue in the repository

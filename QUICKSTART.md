@@ -6,7 +6,7 @@ Get your Image Generator app running in 5 minutes!
 
 - Node.js installed
 - Cloudflare account
-- Midjourney API key
+- APIFRAME API key
 
 ## Installation
 
@@ -23,13 +23,13 @@ wrangler login
 # 4. Run automated setup
 npm run setup
 
-# 5. Edit .dev.vars and add your Midjourney API key
+# 5. Edit .dev.vars and add your APIFRAME API key
 nano .dev.vars
 ```
 
 Add your API key to `.dev.vars`:
 ```
-MIDJOURNEY_API_KEY=your_actual_key_here
+APIFRAME_API_KEY=your_actual_key_here
 ```
 
 ## Local Development
@@ -46,7 +46,7 @@ Visit http://localhost:8788
 
 ```bash
 # Set production secret
-wrangler secret put MIDJOURNEY_API_KEY --env production
+wrangler secret put APIFRAME_API_KEY --env production
 ```
 
 ### Deploy
@@ -88,7 +88,7 @@ Done! Your app is live at `https://image-generator-xxx.pages.dev`
 - Configure R2 binding in Pages settings (see above)
 
 **Images not generating:**
-- Check your Midjourney API key
+- Check your APIFRAME API key
 - Verify API endpoint matches your provider
 - Check browser console for errors
 

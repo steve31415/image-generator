@@ -33,9 +33,9 @@ export async function onRequestPost(context) {
     const fullPrompt = `${prompt}. ${STYLE_DESCRIPTION} ${MOODBOARD_PROFILE} ${STYLE_TAGS}`;
     console.log(`[Generate] Full prompt: ${fullPrompt}`);
 
-    // Generate image using Midjourney API
+    // Generate image using APIFRAME Midjourney API
     const imageData = await generateWithMidjourney(fullPrompt, env);
-    console.log(`[Generate] Midjourney API response received`);
+    console.log(`[Generate] APIFRAME API response received`);
 
     // Store in R2
     const r2Key = `generated/${id}/${sequence}`;
@@ -78,60 +78,54 @@ export async function onRequestOptions(context) {
 }
 
 /**
- * Generate image using Midjourney API
+ * Generate image using APIFRAME Midjourney API
+ * Documentation: https://docs.apiframe.pro
  */
 async function generateWithMidjourney(prompt, env) {
-  console.log('[Midjourney] Starting generation with prompt:', prompt);
+  console.log('[APIFRAME] Starting generation with prompt:', prompt);
 
-  if (!env.MIDJOURNEY_API_KEY) {
-    throw new Error('MIDJOURNEY_API_KEY not configured. Please set it using: wrangler secret put MIDJOURNEY_API_KEY');
+  if (!env.APIFRAME_API_KEY) {
+    throw new Error('APIFRAME_API_KEY not configured. Please set it using: wrangler secret put APIFRAME_API_KEY');
   }
 
-  // Get API endpoint from environment or use default
-  const apiEndpoint = env.MIDJOURNEY_API_ENDPOINT || 'https://api.midjourneyapi.io/v2/imagine';
+  // APIFRAME Imagine endpoint
+  const apiEndpoint = 'https://api.apiframe.pro/imagine';
 
-  console.log('[Midjourney] Calling API:', apiEndpoint);
+  console.log('[APIFRAME] Calling Imagine API:', apiEndpoint);
 
   const response = await fetch(apiEndpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${env.MIDJOURNEY_API_KEY}`,
+      'Authorization': env.APIFRAME_API_KEY,
     },
     body: JSON.stringify({
-      prompt,
-      // Additional parameters based on your API provider
-      // Adjust these based on your specific Midjourney API service
+      prompt: prompt,
+      aspect_ratio: '4:3', // Matches --ar 4:3 from style tags
     }),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('[Midjourney] API error:', response.status, errorText);
-    throw new Error(`Midjourney API error: ${response.status} - ${errorText}`);
+    console.error('[APIFRAME] API error:', response.status, errorText);
+    throw new Error(`APIFRAME API error: ${response.status} - ${errorText}`);
   }
 
   const data = await response.json();
-  console.log('[Midjourney] API response:', JSON.stringify(data));
+  console.log('[APIFRAME] API response:', JSON.stringify(data));
 
-  // Parse response based on API provider
-  let imageUrl = null;
-  let taskId = data.task_id || data.id || data.taskId;
+  // APIFRAME returns a task_id that we need to poll
+  const taskId = data.task_id;
 
-  // If the API returns an immediate result
-  if (data.image_url || data.url || data.imageUrl) {
-    imageUrl = data.image_url || data.url || data.imageUrl;
-  }
-  // If the API requires polling
-  else if (taskId) {
-    console.log('[Midjourney] Polling for result, task ID:', taskId);
-    imageUrl = await pollForResult(taskId, env);
-  }
-  else {
-    throw new Error(`Unexpected API response format: ${JSON.stringify(data)}`);
+  if (!taskId) {
+    throw new Error(`No task_id in APIFRAME response: ${JSON.stringify(data)}`);
   }
 
-  console.log('[Midjourney] Image URL:', imageUrl);
+  console.log('[APIFRAME] Task created, ID:', taskId);
+
+  // Poll for the result
+  const imageUrl = await pollForResult(taskId, env);
+  console.log('[APIFRAME] Image URL:', imageUrl);
 
   // Fetch the actual image data
   const imageResponse = await fetch(imageUrl);
@@ -140,7 +134,7 @@ async function generateWithMidjourney(prompt, env) {
   }
 
   const imageBuffer = await imageResponse.arrayBuffer();
-  console.log('[Midjourney] Image downloaded, size:', imageBuffer.byteLength, 'bytes');
+  console.log('[APIFRAME] Image downloaded, size:', imageBuffer.byteLength, 'bytes');
 
   return {
     imageUrl,
@@ -149,46 +143,55 @@ async function generateWithMidjourney(prompt, env) {
 }
 
 /**
- * Poll Midjourney API for generation result
+ * Poll APIFRAME for generation result using fetch endpoint
+ * Documentation: https://docs.apiframe.pro/api-endpoints/fetch
  */
 async function pollForResult(taskId, env, maxAttempts = 60, delayMs = 5000) {
-  const statusEndpointTemplate = env.MIDJOURNEY_API_STATUS_ENDPOINT || 'https://api.midjourneyapi.io/v2/status/{taskId}';
-  const apiEndpoint = statusEndpointTemplate.replace('{taskId}', taskId);
+  const apiEndpoint = 'https://api.apiframe.pro/fetch';
 
-  console.log('[Midjourney] Status endpoint:', apiEndpoint);
+  console.log('[APIFRAME] Polling for task:', taskId);
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    console.log(`[Midjourney] Polling attempt ${attempt + 1}/${maxAttempts}`);
+    console.log(`[APIFRAME] Polling attempt ${attempt + 1}/${maxAttempts}`);
 
     const response = await fetch(apiEndpoint, {
+      method: 'POST',
       headers: {
-        'Authorization': `Bearer ${env.MIDJOURNEY_API_KEY}`,
+        'Content-Type': 'application/json',
+        'Authorization': env.APIFRAME_API_KEY,
       },
+      body: JSON.stringify({
+        task_id: taskId,
+      }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Status check failed: ${response.status} - ${errorText}`);
+      throw new Error(`APIFRAME fetch failed: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
-    console.log('[Midjourney] Status:', data.status || data.state);
+    const status = data.status;
+    const percentage = data.percentage || 0;
 
-    const status = data.status || data.state;
+    console.log(`[APIFRAME] Status: ${status}, Progress: ${percentage}%`);
 
-    if (status === 'completed' || status === 'success' || status === 'done') {
-      const imageUrl = data.image_url || data.url || data.imageUrl || data.result?.image_url;
+    // APIFRAME status: "finished" when complete
+    if (status === 'finished' || status === 'completed' || status === 'success') {
+      const imageUrl = data.image_url || data.url || data.imageUrl;
       if (!imageUrl) {
-        throw new Error(`No image URL in completed response: ${JSON.stringify(data)}`);
+        throw new Error(`No image URL in finished response: ${JSON.stringify(data)}`);
       }
+      console.log('[APIFRAME] Task completed successfully');
       return imageUrl;
     }
 
+    // Check for failed status
     if (status === 'failed' || status === 'error') {
-      throw new Error(`Image generation failed: ${data.error || data.message || 'Unknown error'}`);
+      throw new Error(`APIFRAME generation failed: ${data.error || data.message || 'Unknown error'}`);
     }
 
-    // Wait before next poll
+    // Status is "processing" - wait before next poll
     await new Promise(resolve => setTimeout(resolve, delayMs));
   }
 

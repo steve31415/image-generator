@@ -20,7 +20,7 @@ Then follow the prompts and edit `.dev.vars` with your API key.
 1. Install Node.js (v16 or later)
 2. Install Wrangler CLI: `npm install -g wrangler`
 3. Have a Cloudflare account
-4. Have a Midjourney API key
+4. Have an APIFRAME API key (from https://apiframe.ai)
 
 ### Step 1: Install Dependencies
 
@@ -93,9 +93,9 @@ cp .dev.vars.example .dev.vars
 nano .dev.vars
 ```
 
-Add your Midjourney API key:
+Add your APIFRAME API key:
 ```
-MIDJOURNEY_API_KEY=your_actual_api_key_here
+APIFRAME_API_KEY=your_actual_api_key_here
 ```
 
 #### For Production
@@ -103,13 +103,9 @@ MIDJOURNEY_API_KEY=your_actual_api_key_here
 Set production secrets:
 
 ```bash
-# Required: Midjourney API key
-wrangler secret put MIDJOURNEY_API_KEY --env production
-# When prompted, paste your API key
-
-# Optional: Custom API endpoints
-wrangler secret put MIDJOURNEY_API_ENDPOINT --env production
-wrangler secret put MIDJOURNEY_API_STATUS_ENDPOINT --env production
+# Required: APIFRAME API key
+wrangler secret put APIFRAME_API_KEY --env production
+# When prompted, paste your API key from https://apiframe.ai/dashboard
 ```
 
 ### Step 6: Test Locally
@@ -166,9 +162,7 @@ After deployment:
 3. Add the following variables:
 
    **Production:**
-   - `MIDJOURNEY_API_KEY` = your_api_key
-   - `MIDJOURNEY_API_ENDPOINT` = your_endpoint (optional)
-   - `MIDJOURNEY_API_STATUS_ENDPOINT` = your_status_endpoint (optional)
+   - `APIFRAME_API_KEY` = your_api_key (from https://apiframe.ai/dashboard)
 
 4. Navigate to "Settings" → "Functions"
 5. Scroll to "R2 bucket bindings"
@@ -228,8 +222,8 @@ Ensure R2 bucket bindings are configured in your Pages project settings.
 ### Images Not Generating
 
 1. Check browser console for errors
-2. Verify your Midjourney API key is correct
-3. Check that your API endpoints are correct for your provider
+2. Verify your APIFRAME API key is correct
+3. Check that your APIFRAME account has credits at https://apiframe.ai/dashboard
 4. Review Cloudflare Pages logs:
    - Go to your Pages project → "Logs" tab
 
@@ -296,7 +290,7 @@ npm run deploy
 ### Update Secrets
 
 ```bash
-wrangler secret put MIDJOURNEY_API_KEY --env production
+wrangler secret put APIFRAME_API_KEY --env production
 ```
 
 ### Update R2 Lifecycle Rules

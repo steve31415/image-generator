@@ -14,8 +14,9 @@ preview_bucket_name = "midjourney-images-preview"
 # Set these using: wrangler secret put <KEY_NAME>
 #
 # Required:
-# - MIDJOURNEY_API_KEY: Your Midjourney API key
+# - APIFRAME_API_KEY: Your APIFRAME API key (get it from https://apiframe.ai)
 #
-# Optional (with defaults):
-# - MIDJOURNEY_API_ENDPOINT: API endpoint for image generation (default: https://api.midjourneyapi.io/v2/imagine)
-# - MIDJOURNEY_API_STATUS_ENDPOINT: API endpoint for status checks (default: https://api.midjourneyapi.io/v2/status/{taskId})
+# The app uses APIFRAME (https://apiframe.ai) for Midjourney image generation
+# Endpoints:
+# - Imagine: https://api.apiframe.pro/imagine
+# - Fetch: https://api.apiframe.pro/fetch
