@@ -177,9 +177,13 @@ async function pollForResult(taskId, env, maxAttempts = 60, delayMs = 5000) {
 
     // APIFRAME status: "finished" when complete
     if (status === 'finished' || status === 'completed' || status === 'success') {
-      const imageUrl = data.image_url || data.url || data.imageUrl;
+      // Log the full response to identify the correct field name
+      console.log('[APIFRAME] Full finished response:', JSON.stringify(data));
+
+      // Try various possible field names for the image URL
+      const imageUrl = data.image_url || data.url || data.imageUrl || data.result_url || data.output_url || data.image;
       if (!imageUrl) {
-        throw new Error(`No image URL in finished response: ${JSON.stringify(data)}`);
+        throw new Error(`No image URL in finished response. Available fields: ${Object.keys(data).join(', ')}. Full response: ${JSON.stringify(data).substring(0, 500)}`);
       }
       console.log('[APIFRAME] Task completed successfully');
       return imageUrl;
