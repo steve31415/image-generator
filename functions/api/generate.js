@@ -83,9 +83,10 @@ export async function onRequestOptions(context) {
  */
 async function generateWithMidjourney(prompt, env) {
   console.log('[APIFRAME] Starting generation with prompt:', prompt);
+  console.log('[APIFRAME] Environment keys available:', Object.keys(env || {}));
 
   if (!env.APIFRAME_API_KEY) {
-    throw new Error('APIFRAME_API_KEY not configured. Please set it using: wrangler secret put APIFRAME_API_KEY');
+    throw new Error(`APIFRAME_API_KEY not configured. Available env keys: ${Object.keys(env || {}).join(', ') || 'none'}`);
   }
 
   // APIFRAME Imagine endpoint
