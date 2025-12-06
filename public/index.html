@@ -499,7 +499,10 @@
                                 const card = document.getElementById(`image-${seq}`);
                                 if (card) {
                                     card.className = 'image-card';
-                                    card.innerHTML = '<div style="padding: 20px; color: red; text-align: center;">Failed</div>';
+                                    // Show truncated error message for debugging
+                                    const errMsg = error.message || 'Unknown error';
+                                    const shortErr = errMsg.length > 100 ? errMsg.substring(0, 100) + '...' : errMsg;
+                                    card.innerHTML = `<div style="padding: 10px; color: red; text-align: center; font-size: 0.8rem; overflow: hidden;">Failed: ${shortErr}</div>`;
                                 }
                                 updateProgress(promises.filter(p => p.settled).length + 1, imageCount);
                             })
