@@ -181,11 +181,26 @@ async function pollForResult(taskId, env, maxAttempts = 60, delayMs = 5000) {
       console.log('[APIFRAME] Full finished response:', JSON.stringify(data));
 
       // Try various possible field names for the image URL
-      const imageUrl = data.image_url || data.url || data.imageUrl || data.result_url || data.output_url || data.image;
+      // APIFRAME returns the URL in different possible locations
+      const imageUrl = data.image_url || data.url || data.imageUrl || data.result_url ||
+                       data.output_url || data.image || data.result || data.output ||
+                       data.task_result || data.cdn_url || data.proxy_url ||
+                       // Check nested result object
+                       (data.result && (data.result.url || data.result.image_url)) ||
+                       // Check if it's in an array
+                       (Array.isArray(data.images) && data.images[0]) ||
+                       (Array.isArray(data.result) && data.result[0]);
+
       if (!imageUrl) {
-        throw new Error(`No image URL in finished response. Available fields: ${Object.keys(data).join(', ')}. Full response: ${JSON.stringify(data).substring(0, 500)}`);
+        // Log all fields with their types and values for debugging
+        const fieldInfo = Object.entries(data).map(([k, v]) => {
+          const type = Array.isArray(v) ? 'array' : typeof v;
+          const preview = typeof v === 'string' ? v.substring(0, 100) : JSON.stringify(v).substring(0, 100);
+          return `${k}(${type}): ${preview}`;
+        }).join('; ');
+        throw new Error(`No image URL found. Fields: ${fieldInfo}`);
       }
-      console.log('[APIFRAME] Task completed successfully');
+      console.log('[APIFRAME] Task completed successfully, URL:', imageUrl);
       return imageUrl;
     }
 
