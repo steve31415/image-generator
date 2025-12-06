@@ -180,25 +180,16 @@ async function pollForResult(taskId, env, maxAttempts = 60, delayMs = 5000) {
       // Log the full response to identify the correct field name
       console.log('[APIFRAME] Full finished response:', JSON.stringify(data));
 
-      // Try various possible field names for the image URL
-      // APIFRAME returns the URL in different possible locations
-      const imageUrl = data.image_url || data.url || data.imageUrl || data.result_url ||
-                       data.output_url || data.image || data.result || data.output ||
-                       data.task_result || data.cdn_url || data.proxy_url ||
-                       // Check nested result object
-                       (data.result && (data.result.url || data.result.image_url)) ||
-                       // Check if it's in an array
-                       (Array.isArray(data.images) && data.images[0]) ||
-                       (Array.isArray(data.result) && data.result[0]);
+      // APIFRAME returns:
+      // - original_image_url: the grid image (2x2 of all 4 images)
+      // - image_urls: array of 4 individual image URLs
+      // We'll use the first individual image or fall back to the grid
+      const imageUrl = (Array.isArray(data.image_urls) && data.image_urls[0]) ||
+                       data.original_image_url ||
+                       data.image_url || data.url;
 
       if (!imageUrl) {
-        // Log all fields with their types and values for debugging
-        const fieldInfo = Object.entries(data).map(([k, v]) => {
-          const type = Array.isArray(v) ? 'array' : typeof v;
-          const preview = typeof v === 'string' ? v.substring(0, 100) : JSON.stringify(v).substring(0, 100);
-          return `${k}(${type}): ${preview}`;
-        }).join('; ');
-        throw new Error(`No image URL found. Fields: ${fieldInfo}`);
+        throw new Error(`No image URL in response. Keys: ${Object.keys(data).join(', ')}`);
       }
       console.log('[APIFRAME] Task completed successfully, URL:', imageUrl);
       return imageUrl;
