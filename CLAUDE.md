@@ -20,3 +20,16 @@ Key points:
 Deploy from public directory (not root)
 Use --project-name=image-generator to target the correct Pages project
 The --branch name becomes part of the alias URL (e.g., staging → staging.image-generator-77r.pages.dev)
+
+# Deploying to Production
+
+To deploy the site to production:
+
+`npx wrangler pages deploy public --project-name=image-generator --branch=main`
+
+- Use --branch=main to deploy to the Production environment (without it, deploys go to a Preview environment based on the current git branch)
+- Deploy from the public directory
+- The production URL is: [https://image-generator-77r.pages.dev](https://image-generator-77r.pages.dev/)
+- Each deployment also gets a unique hash URL (e.g., https://<hash>.image-generator-77r.pages.dev)
+
+**If deployment fails with network errors:** Retry up to 4 times with exponential backoff (2s, 4s, 8s, 16s).
