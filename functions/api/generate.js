@@ -1,6 +1,8 @@
 /**
- * API Function: Generate Image
+ * API Function: Generate Image Batch
  * POST /api/generate
+ *
+ * Each APIFRAME call generates 4 images. This endpoint handles a batch of 4.
  */
 
 // Style description to append to prompts (text only, no Midjourney flags)
@@ -16,12 +18,12 @@ export async function onRequestPost(context) {
   };
 
   try {
-    const { id, sequence, prompt } = await request.json();
+    const { id, baseSequence, prompt } = await request.json();
 
-    console.log(`[Generate] ID: ${id}, Sequence: ${sequence}, Prompt: ${prompt}`);
+    console.log(`[Generate] ID: ${id}, BaseSequence: ${baseSequence}, Prompt: ${prompt}`);
 
-    if (!id || !sequence || !prompt) {
-      return new Response(JSON.stringify({ error: 'Missing required fields: id, sequence, prompt' }), {
+    if (!id || !baseSequence || !prompt) {
+      return new Response(JSON.stringify({ error: 'Missing required fields: id, baseSequence, prompt' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -31,23 +33,29 @@ export async function onRequestPost(context) {
     const fullPrompt = `${prompt}. ${STYLE_DESCRIPTION}`;
     console.log(`[Generate] Full prompt: ${fullPrompt}`);
 
-    // Generate image using APIFRAME Midjourney API
-    const imageData = await generateWithMidjourney(fullPrompt, env);
-    console.log(`[Generate] APIFRAME API response received`);
+    // Generate images using APIFRAME Midjourney API (returns 4 images)
+    const imageDataArray = await generateWithMidjourney(fullPrompt, env);
+    console.log(`[Generate] APIFRAME API returned ${imageDataArray.length} images`);
 
-    // Store in R2
-    const r2Key = `generated/${id}/${sequence}`;
-    await storeImageInR2(env.IMAGE_BUCKET, r2Key, imageData.imageBuffer, prompt);
-    console.log(`[Generate] Stored in R2: ${r2Key}`);
+    // Store all 4 images in R2 and build response
+    const images = [];
+    for (let i = 0; i < imageDataArray.length; i++) {
+      const sequence = baseSequence + i;
+      const r2Key = `generated/${id}/${sequence}`;
+      await storeImageInR2(env.IMAGE_BUCKET, r2Key, imageDataArray[i].imageBuffer, prompt);
+      console.log(`[Generate] Stored in R2: ${r2Key}`);
 
-    // Generate public URL for the image
-    const imageUrl = `/api/image/${id}/${sequence}`;
+      images.push({
+        sequence,
+        imageUrl: `/api/image/${id}/${sequence}`,
+      });
+    }
 
     return new Response(JSON.stringify({
       success: true,
-      imageUrl,
+      images,
       prompt,
-      sequence,
+      baseSequence,
       id,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -76,8 +84,9 @@ export async function onRequestOptions(context) {
 }
 
 /**
- * Generate image using APIFRAME Midjourney API
+ * Generate images using APIFRAME Midjourney API
  * Documentation: https://docs.apiframe.pro
+ * Returns an array of 4 images (Midjourney generates 4 per request)
  */
 async function generateWithMidjourney(prompt, env) {
   console.log('[APIFRAME] Starting generation with prompt:', prompt);
@@ -100,7 +109,7 @@ async function generateWithMidjourney(prompt, env) {
     },
     body: JSON.stringify({
       prompt: prompt,
-      aspect_ratio: '4:3', // Matches --ar 4:3 from style tags
+      aspect_ratio: '4:3',
     }),
   });
 
@@ -122,23 +131,23 @@ async function generateWithMidjourney(prompt, env) {
 
   console.log('[APIFRAME] Task created, ID:', taskId);
 
-  // Poll for the result
-  const imageUrl = await pollForResult(taskId, env);
-  console.log('[APIFRAME] Image URL:', imageUrl);
+  // Poll for the result - returns array of image URLs
+  const imageUrls = await pollForResult(taskId, env);
+  console.log('[APIFRAME] Got', imageUrls.length, 'image URLs');
 
-  // Fetch the actual image data
-  const imageResponse = await fetch(imageUrl);
-  if (!imageResponse.ok) {
-    throw new Error(`Failed to fetch image from ${imageUrl}: ${imageResponse.status}`);
-  }
+  // Fetch all 4 images in parallel
+  const imagePromises = imageUrls.map(async (url, index) => {
+    console.log(`[APIFRAME] Downloading image ${index + 1}:`, url);
+    const imageResponse = await fetch(url);
+    if (!imageResponse.ok) {
+      throw new Error(`Failed to fetch image from ${url}: ${imageResponse.status}`);
+    }
+    const imageBuffer = await imageResponse.arrayBuffer();
+    console.log(`[APIFRAME] Image ${index + 1} downloaded, size:`, imageBuffer.byteLength, 'bytes');
+    return { imageUrl: url, imageBuffer };
+  });
 
-  const imageBuffer = await imageResponse.arrayBuffer();
-  console.log('[APIFRAME] Image downloaded, size:', imageBuffer.byteLength, 'bytes');
-
-  return {
-    imageUrl,
-    imageBuffer,
-  };
+  return Promise.all(imagePromises);
 }
 
 /**
@@ -177,22 +186,24 @@ async function pollForResult(taskId, env, maxAttempts = 60, delayMs = 5000) {
 
     // APIFRAME status: "finished" when complete
     if (status === 'finished' || status === 'completed' || status === 'success') {
-      // Log the full response to identify the correct field name
       console.log('[APIFRAME] Full finished response:', JSON.stringify(data));
 
       // APIFRAME returns:
-      // - original_image_url: the grid image (2x2 of all 4 images)
       // - image_urls: array of 4 individual image URLs
-      // We'll use the first individual image or fall back to the grid
-      const imageUrl = (Array.isArray(data.image_urls) && data.image_urls[0]) ||
-                       data.original_image_url ||
-                       data.image_url || data.url;
-
-      if (!imageUrl) {
-        throw new Error(`No image URL in response. Keys: ${Object.keys(data).join(', ')}`);
+      // - original_image_url: the grid image (2x2 of all 4 images)
+      if (Array.isArray(data.image_urls) && data.image_urls.length > 0) {
+        console.log('[APIFRAME] Task completed successfully, got', data.image_urls.length, 'images');
+        return data.image_urls;
       }
-      console.log('[APIFRAME] Task completed successfully, URL:', imageUrl);
-      return imageUrl;
+
+      // Fallback to single image if image_urls not available
+      const singleUrl = data.original_image_url || data.image_url || data.url;
+      if (singleUrl) {
+        console.log('[APIFRAME] Task completed with single image URL');
+        return [singleUrl];
+      }
+
+      throw new Error(`No image URLs in response. Keys: ${Object.keys(data).join(', ')}`);
     }
 
     // Check for failed status

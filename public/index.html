@@ -368,9 +368,9 @@
             };
         }
 
-        // Generate single image with timeout
-        async function generateImage(id, sequence, prompt) {
-            console.log(`[${sequence}] Starting generation for prompt:`, prompt);
+        // Generate a batch of 4 images with timeout
+        async function generateBatch(id, baseSequence, prompt) {
+            console.log(`[Batch ${baseSequence}-${baseSequence + 3}] Starting generation for prompt:`, prompt);
 
             // 5 minute timeout for image generation (APIFRAME polling can take a while)
             const controller = new AbortController();
@@ -384,7 +384,7 @@
                     },
                     body: JSON.stringify({
                         id,
-                        sequence,
+                        baseSequence,
                         prompt
                     }),
                     signal: controller.signal
@@ -394,21 +394,21 @@
 
                 if (!response.ok) {
                     const error = await response.text();
-                    console.error(`[${sequence}] API error response:`, error);
+                    console.error(`[Batch ${baseSequence}] API error response:`, error);
                     throw new Error(`HTTP ${response.status}: ${error}`);
                 }
 
                 const data = await response.json();
-                console.log(`[${sequence}] Generation complete:`, data);
+                console.log(`[Batch ${baseSequence}] Generation complete:`, data);
 
                 return data;
             } catch (error) {
                 clearTimeout(timeoutId);
                 if (error.name === 'AbortError') {
-                    console.error(`[${sequence}] Generation timed out after 5 minutes`);
-                    throw new Error('Generation timed out - the image took too long to generate');
+                    console.error(`[Batch ${baseSequence}] Generation timed out after 5 minutes`);
+                    throw new Error('Generation timed out - the images took too long to generate');
                 }
-                console.error(`[${sequence}] Generation failed:`, error);
+                console.error(`[Batch ${baseSequence}] Generation failed:`, error);
                 throw error;
             }
         }
@@ -437,7 +437,7 @@
 
         // Handle generation mode
         async function handleGenerate() {
-            const imageCount = parseInt(document.getElementById('imageCount').value);
+            const requestedCount = parseInt(document.getElementById('imageCount').value);
             const promptsText = document.getElementById('prompts').value.trim();
 
             if (!promptsText) {
@@ -452,7 +452,16 @@
                 return;
             }
 
-            console.log('Starting generation:', { imageCount, prompts: prompts.length });
+            // Round up to multiple of 4 (each API call generates 4 images)
+            const imageCount = Math.ceil(requestedCount / 4) * 4;
+            const totalBatches = imageCount / 4;
+
+            console.log('Starting generation:', {
+                requested: requestedCount,
+                actual: imageCount,
+                batches: totalBatches,
+                prompts: prompts.length
+            });
 
             // Generate unique ID and update URL
             generationId = generateId();
@@ -471,53 +480,57 @@
                 grid.appendChild(createImageCard(i));
             }
 
-            // Calculate images per prompt
-            const imagesPerPrompt = Math.floor(imageCount / prompts.length);
-            const remainder = imageCount % prompts.length;
+            // Calculate batches per prompt (each batch = 4 images)
+            const batchesPerPrompt = Math.floor(totalBatches / prompts.length);
+            const remainder = totalBatches % prompts.length;
 
-            console.log(`Distributing ${imageCount} images across ${prompts.length} prompts: ${imagesPerPrompt} each, ${remainder} extra`);
+            console.log(`Distributing ${totalBatches} batches across ${prompts.length} prompts: ${batchesPerPrompt} each, ${remainder} extra`);
 
-            // Generate images
-            let sequence = 1;
+            // Generate images in batches
+            let baseSequence = 1;
             const promises = [];
+            let completedImages = 0;
 
             for (let i = 0; i < prompts.length; i++) {
-                const count = imagesPerPrompt + (i < remainder ? 1 : 0);
+                const batchCount = batchesPerPrompt + (i < remainder ? 1 : 0);
+                const prompt = prompts[i];
 
-                for (let j = 0; j < count; j++) {
-                    const seq = sequence++;
-                    const prompt = prompts[i];
+                for (let j = 0; j < batchCount; j++) {
+                    const batchBase = baseSequence;
+                    baseSequence += 4;
 
-                    promises.push(
-                        generateImage(generationId, seq, prompt)
-                            .then(data => {
-                                updateImageCard(seq, data.imageUrl, data.prompt);
-                                updateProgress(promises.filter(p => p.settled).length + 1, imageCount);
-                            })
-                            .catch(error => {
-                                console.error(`Failed to generate image ${seq}:`, error);
+                    const promise = generateBatch(generationId, batchBase, prompt)
+                        .then(data => {
+                            // Update all 4 image cards from this batch
+                            for (const img of data.images) {
+                                updateImageCard(img.sequence, img.imageUrl, data.prompt);
+                                completedImages++;
+                                updateProgress(completedImages, imageCount);
+                            }
+                        })
+                        .catch(error => {
+                            console.error(`Failed to generate batch ${batchBase}:`, error);
+                            // Mark all 4 cards in this batch as failed
+                            for (let k = 0; k < 4; k++) {
+                                const seq = batchBase + k;
                                 const card = document.getElementById(`image-${seq}`);
                                 if (card) {
                                     card.className = 'image-card';
-                                    // Show truncated error message for debugging
                                     const errMsg = error.message || 'Unknown error';
-                                    const shortErr = errMsg.length > 100 ? errMsg.substring(0, 100) + '...' : errMsg;
+                                    const shortErr = errMsg.length > 80 ? errMsg.substring(0, 80) + '...' : errMsg;
                                     card.innerHTML = `<div style="padding: 10px; color: red; text-align: center; font-size: 0.8rem; overflow: hidden;">Failed: ${shortErr}</div>`;
                                 }
-                                updateProgress(promises.filter(p => p.settled).length + 1, imageCount);
-                            })
-                            .finally(() => {
-                                promises.find(p => p === promise).settled = true;
-                            })
-                    );
+                                completedImages++;
+                                updateProgress(completedImages, imageCount);
+                            }
+                        });
 
-                    const promise = promises[promises.length - 1];
-                    promise.settled = false;
+                    promises.push(promise);
                 }
             }
 
             await Promise.allSettled(promises);
-            console.log('All images processed');
+            console.log('All batches processed');
         }
 
         // Handle view mode
