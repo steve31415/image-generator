@@ -5,6 +5,51 @@
  * Each APIFRAME call generates 4 images. This endpoint handles a batch of 4.
  */
 
+// Retry configuration for 429 and 5xx errors
+const RETRY_DELAYS = [2000, 10000, 60000]; // 2s, 10s, 60s
+const MAX_RETRIES = 3;
+
+/**
+ * Fetch with retry logic for 429 (rate limit) and 5xx (server error) responses
+ * Retries up to 3 times with delays of 2, 10, and 60 seconds
+ */
+async function fetchWithRetry(url, options, context = 'API') {
+  let lastError;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const response = await fetch(url, options);
+
+      // Check if we should retry (429 or 5xx)
+      if (response.status === 429 || (response.status >= 500 && response.status < 600)) {
+        if (attempt < MAX_RETRIES) {
+          const delay = RETRY_DELAYS[attempt];
+          console.log(`[${context}] Got ${response.status}, retrying in ${delay / 1000}s (attempt ${attempt + 1}/${MAX_RETRIES})`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        // Max retries exceeded, return the error response
+        console.error(`[${context}] Max retries (${MAX_RETRIES}) exceeded for status ${response.status}`);
+      }
+
+      return response;
+    } catch (error) {
+      // Network errors - also retry these
+      lastError = error;
+      if (attempt < MAX_RETRIES) {
+        const delay = RETRY_DELAYS[attempt];
+        console.log(`[${context}] Network error: ${error.message}, retrying in ${delay / 1000}s (attempt ${attempt + 1}/${MAX_RETRIES})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      console.error(`[${context}] Max retries (${MAX_RETRIES}) exceeded for network error: ${error.message}`);
+      throw error;
+    }
+  }
+
+  throw lastError;
+}
+
 // Style description to append to prompts (text only, no Midjourney flags)
 const STYLE_DESCRIPTION = "In the style of a vintage 1920 Art Deco travel poster. Bold geometric shapes, limited color palette, strong lines, sophisticated retro futurist style.";
 
@@ -107,7 +152,7 @@ async function generateWithMidjourney(prompt, env) {
 
   console.log('[APIFRAME] Calling Imagine API:', apiEndpoint);
 
-  const response = await fetch(apiEndpoint, {
+  const response = await fetchWithRetry(apiEndpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -117,7 +162,7 @@ async function generateWithMidjourney(prompt, env) {
       prompt: prompt,
       // Note: aspect_ratio and other Midjourney params are included in the prompt via STYLE_TAGS
     }),
-  });
+  }, 'APIFRAME Imagine');
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -144,7 +189,7 @@ async function generateWithMidjourney(prompt, env) {
   // Fetch all 4 images in parallel
   const imagePromises = imageUrls.map(async (url, index) => {
     console.log(`[APIFRAME] Downloading image ${index + 1}:`, url);
-    const imageResponse = await fetch(url);
+    const imageResponse = await fetchWithRetry(url, {}, `Image Download ${index + 1}`);
     if (!imageResponse.ok) {
       throw new Error(`Failed to fetch image from ${url}: ${imageResponse.status}`);
     }
@@ -168,7 +213,7 @@ async function pollForResult(taskId, env, maxAttempts = 60, delayMs = 5000) {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     console.log(`[APIFRAME] Polling attempt ${attempt + 1}/${maxAttempts}`);
 
-    const response = await fetch(apiEndpoint, {
+    const response = await fetchWithRetry(apiEndpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -177,7 +222,7 @@ async function pollForResult(taskId, env, maxAttempts = 60, delayMs = 5000) {
       body: JSON.stringify({
         task_id: taskId,
       }),
-    });
+    }, 'APIFRAME Fetch');
 
     if (!response.ok) {
       const errorText = await response.text();
