@@ -212,6 +212,66 @@
             opacity: 1;
         }
 
+        .image-number {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            font-weight: bold;
+            font-size: 0.9rem;
+            padding: 4px 8px;
+            border-radius: 4px;
+            z-index: 1;
+        }
+
+        .single-image-view {
+            grid-column: 1 / -1;
+            text-align: center;
+        }
+
+        .single-image-view img {
+            width: auto;
+            height: auto;
+            max-width: 100%;
+            max-height: 80vh;
+            min-width: min(800px, 100%);
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        }
+
+        .single-image-view .image-info {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            text-align: left;
+        }
+
+        .single-image-view .image-info h3 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .single-image-view .image-info p {
+            color: #555;
+            line-height: 1.6;
+        }
+
+        .single-image-view .nav-links {
+            margin-top: 20px;
+        }
+
+        .single-image-view .nav-links a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .single-image-view .nav-links a:hover {
+            text-decoration: underline;
+        }
+
         .error-message {
             background: #fee;
             color: #c00;
@@ -280,7 +340,8 @@
             const params = new URLSearchParams(window.location.search);
             return {
                 id: params.get('id'),
-                count: parseInt(params.get('count')) || 0
+                count: parseInt(params.get('count')) || 0,
+                image: parseInt(params.get('image')) || 0
             };
         }
 
@@ -342,30 +403,53 @@
 
             card.className = 'image-card';
             card.innerHTML = `
+                <span class="image-number">${index}</span>
                 <img src="${imageUrl}" alt="Generated image ${index}">
                 <div class="prompt-overlay">${prompt}</div>
             `;
 
             card.onclick = () => {
-                const newWindow = window.open('', '_blank');
-                newWindow.document.write(`
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <title>Image ${index}</title>
-                        <style>
-                            body { margin: 0; padding: 20px; background: #222; color: white; font-family: sans-serif; }
-                            img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
-                            .prompt { max-width: 800px; margin: 20px auto; padding: 15px; background: #333; border-radius: 8px; }
-                        </style>
-                    </head>
-                    <body>
-                        <img src="${imageUrl}" alt="Generated image">
-                        <div class="prompt"><strong>Prompt:</strong> ${prompt}</div>
-                    </body>
-                    </html>
-                `);
+                // Build shareable URL for this specific image
+                const url = new URL(window.location);
+                url.searchParams.set('image', index);
+                window.open(url.toString(), '_blank');
             };
+        }
+
+        // Handle single image view mode
+        async function handleSingleImage(id, count, imageIndex) {
+            console.log('Single image view:', { id, imageIndex });
+
+            // Hide input section
+            document.getElementById('inputSection').style.display = 'none';
+
+            // Create the single image view container
+            const grid = document.getElementById('imageGrid');
+            grid.innerHTML = '<div class="single-image-view" id="singleImageContainer">Loading image...</div>';
+
+            try {
+                const data = await retrieveImage(id, imageIndex);
+                const container = document.getElementById('singleImageContainer');
+
+                // Build URL for viewing all images
+                const allImagesUrl = new URL(window.location);
+                allImagesUrl.searchParams.delete('image');
+
+                container.innerHTML = `
+                    <img src="${data.imageUrl}" alt="Image ${imageIndex}">
+                    <div class="image-info">
+                        <h3>Image #${imageIndex}</h3>
+                        <p><strong>Prompt:</strong> ${data.prompt}</p>
+                    </div>
+                    <div class="nav-links">
+                        <a href="${allImagesUrl.toString()}">← View all images</a>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Failed to load single image:', error);
+                const container = document.getElementById('singleImageContainer');
+                container.innerHTML = `<p style="color: red;">Failed to load image: ${error.message}</p>`;
+            }
         }
 
         // Generate a batch of 4 images with timeout
@@ -537,9 +621,8 @@
         async function handleView(id, count) {
             console.log('View mode:', { id, count });
 
-            // Hide input section, show progress
+            // Hide input section, show share URL (no progress bar for already-generated images)
             document.getElementById('inputSection').style.display = 'none';
-            document.getElementById('progressSection').classList.add('active');
             document.getElementById('shareSection').classList.add('active');
             document.getElementById('shareUrl').textContent = window.location.toString();
 
@@ -559,19 +642,16 @@
                     retrieveImage(id, seq)
                         .then(data => {
                             updateImageCard(seq, data.imageUrl, data.prompt);
-                            updateProgress(promises.filter(p => p.settled).length + 1, count);
                         })
                         .catch(error => {
                             console.error(`Failed to retrieve image ${seq}:`, error);
-                            updateProgress(promises.filter(p => p.settled).length + 1, count);
-                        })
-                        .finally(() => {
-                            promises.find(p => p === promise).settled = true;
+                            const card = document.getElementById(`image-${seq}`);
+                            if (card) {
+                                card.className = 'image-card';
+                                card.innerHTML = `<div style="padding: 10px; color: #999; text-align: center;">Image not found</div>`;
+                            }
                         })
                 );
-
-                const promise = promises[promises.length - 1];
-                promise.settled = false;
             }
 
             await Promise.allSettled(promises);
@@ -582,9 +662,14 @@
         window.addEventListener('DOMContentLoaded', () => {
             const params = getUrlParams();
 
-            if (params.id && params.count > 0) {
+            if (params.id && params.count > 0 && params.image > 0) {
+                // Single image view mode
+                handleSingleImage(params.id, params.count, params.image);
+            } else if (params.id && params.count > 0) {
+                // Gallery view mode
                 handleView(params.id, params.count);
             } else {
+                // Generation mode
                 document.getElementById('submitBtn').addEventListener('click', handleGenerate);
             }
         });
