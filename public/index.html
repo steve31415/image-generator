@@ -368,9 +368,13 @@
             };
         }
 
-        // Generate single image
+        // Generate single image with timeout
         async function generateImage(id, sequence, prompt) {
             console.log(`[${sequence}] Starting generation for prompt:`, prompt);
+
+            // 5 minute timeout for image generation (APIFRAME polling can take a while)
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000);
 
             try {
                 const response = await fetch(`/api/generate`, {
@@ -382,11 +386,15 @@
                         id,
                         sequence,
                         prompt
-                    })
+                    }),
+                    signal: controller.signal
                 });
+
+                clearTimeout(timeoutId);
 
                 if (!response.ok) {
                     const error = await response.text();
+                    console.error(`[${sequence}] API error response:`, error);
                     throw new Error(`HTTP ${response.status}: ${error}`);
                 }
 
@@ -395,6 +403,11 @@
 
                 return data;
             } catch (error) {
+                clearTimeout(timeoutId);
+                if (error.name === 'AbortError') {
+                    console.error(`[${sequence}] Generation timed out after 5 minutes`);
+                    throw new Error('Generation timed out - the image took too long to generate');
+                }
                 console.error(`[${sequence}] Generation failed:`, error);
                 throw error;
             }
@@ -405,7 +418,8 @@
             console.log(`[${sequence}] Retrieving image`);
 
             try {
-                const response = await fetch(`/api/image/${id}/${sequence}`);
+                // Request JSON format to get image URL and metadata
+                const response = await fetch(`/api/image/${id}/${sequence}?format=json`);
 
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${await response.text()}`);
@@ -485,7 +499,10 @@
                                 const card = document.getElementById(`image-${seq}`);
                                 if (card) {
                                     card.className = 'image-card';
-                                    card.innerHTML = '<div style="padding: 20px; color: red; text-align: center;">Failed</div>';
+                                    // Show truncated error message for debugging
+                                    const errMsg = error.message || 'Unknown error';
+                                    const shortErr = errMsg.length > 100 ? errMsg.substring(0, 100) + '...' : errMsg;
+                                    card.innerHTML = `<div style="padding: 10px; color: red; text-align: center; font-size: 0.8rem; overflow: hidden;">Failed: ${shortErr}</div>`;
                                 }
                                 updateProgress(promises.filter(p => p.settled).length + 1, imageCount);
                             })

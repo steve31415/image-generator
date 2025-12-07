@@ -3,10 +3,8 @@
  * POST /api/generate
  */
 
-// Style parameters to append to prompts
+// Style description to append to prompts (text only, no Midjourney flags)
 const STYLE_DESCRIPTION = "In the style of a vintage 1920 Art Deco travel poster. Bold geometric shapes, limited color palette, strong lines, sophisticated retro futurist style.";
-const MOODBOARD_PROFILE = "--p a35c6a69-3196-4374-b049-bcd5b278375b m7318439057938186264";
-const STYLE_TAGS = "--style raw --v 6.1 --ar 4:3 --stylize 350 --variety 30";
 
 export async function onRequestPost(context) {
   const { request, env } = context;
@@ -29,8 +27,8 @@ export async function onRequestPost(context) {
       });
     }
 
-    // Build full prompt with style parameters
-    const fullPrompt = `${prompt}. ${STYLE_DESCRIPTION} ${MOODBOARD_PROFILE} ${STYLE_TAGS}`;
+    // Build full prompt with style description (no Midjourney flags - those are passed via API params)
+    const fullPrompt = `${prompt}. ${STYLE_DESCRIPTION}`;
     console.log(`[Generate] Full prompt: ${fullPrompt}`);
 
     // Generate image using APIFRAME Midjourney API
@@ -83,9 +81,10 @@ export async function onRequestOptions(context) {
  */
 async function generateWithMidjourney(prompt, env) {
   console.log('[APIFRAME] Starting generation with prompt:', prompt);
+  console.log('[APIFRAME] Environment keys available:', Object.keys(env || {}));
 
   if (!env.APIFRAME_API_KEY) {
-    throw new Error('APIFRAME_API_KEY not configured. Please set it using: wrangler secret put APIFRAME_API_KEY');
+    throw new Error(`APIFRAME_API_KEY not configured. Available env keys: ${Object.keys(env || {}).join(', ') || 'none'}`);
   }
 
   // APIFRAME Imagine endpoint
@@ -178,11 +177,21 @@ async function pollForResult(taskId, env, maxAttempts = 60, delayMs = 5000) {
 
     // APIFRAME status: "finished" when complete
     if (status === 'finished' || status === 'completed' || status === 'success') {
-      const imageUrl = data.image_url || data.url || data.imageUrl;
+      // Log the full response to identify the correct field name
+      console.log('[APIFRAME] Full finished response:', JSON.stringify(data));
+
+      // APIFRAME returns:
+      // - original_image_url: the grid image (2x2 of all 4 images)
+      // - image_urls: array of 4 individual image URLs
+      // We'll use the first individual image or fall back to the grid
+      const imageUrl = (Array.isArray(data.image_urls) && data.image_urls[0]) ||
+                       data.original_image_url ||
+                       data.image_url || data.url;
+
       if (!imageUrl) {
-        throw new Error(`No image URL in finished response: ${JSON.stringify(data)}`);
+        throw new Error(`No image URL in response. Keys: ${Object.keys(data).join(', ')}`);
       }
-      console.log('[APIFRAME] Task completed successfully');
+      console.log('[APIFRAME] Task completed successfully, URL:', imageUrl);
       return imageUrl;
     }
 
