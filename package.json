@@ -4,7 +4,7 @@
   "description": "Cloudflare-based image generation app using Midjourney API",
   "main": "src/index.js",
   "scripts": {
-    "dev": "wrangler pages dev public --compatibility-date=2024-01-01",
+    "dev": "wrangler pages dev public --compatibility-date=2025-12-01",
     "deploy": "wrangler pages deploy public",
     "setup": "./setup.sh",
     "r2:create": "wrangler r2 bucket create midjourney-images && wrangler r2 bucket create midjourney-images-preview",
@@ -15,6 +15,6 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
-    "wrangler": "^3.0.0"
+    "wrangler": "^4.0.0"
   }
 }
