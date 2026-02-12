@@ -168,7 +168,7 @@ async function generateWithGemini(prompt, env) {
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: {
         responseModalities: ['IMAGE'],
-        imageConfig: { aspectRatio: '1:1', imageSize: '2K' },
+        imageConfig: { aspectRatio: '4:3', imageSize: '2K' },
       },
     }),
   }, 'Gemini');
@@ -193,13 +193,13 @@ async function generateWithGemini(prompt, env) {
     throw new Error(`No parts in Gemini response candidate: ${JSON.stringify(candidates[0])}`);
   }
 
-  // Find the part with inline_data (image)
-  const imagePart = parts.find(p => p.inline_data);
+  // Find the part with inlineData (image)
+  const imagePart = parts.find(p => p.inlineData);
   if (!imagePart) {
-    throw new Error(`No inline_data in Gemini response parts: ${JSON.stringify(parts.map(p => Object.keys(p)))}`);
+    throw new Error(`No inlineData in Gemini response parts: ${JSON.stringify(parts.map(p => Object.keys(p)))}`);
   }
 
-  const { mime_type, data: base64Data } = imagePart.inline_data;
+  const { mimeType: mime_type, data: base64Data } = imagePart.inlineData;
   console.log(`[Gemini] Got image: mime_type=${mime_type}, base64 length=${base64Data.length}`);
 
   // Convert base64 to ArrayBuffer
