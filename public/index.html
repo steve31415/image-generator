@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Image Generator - Midjourney API</title>
+    <title>Image Generator</title>
     <style>
         * {
             margin: 0;
@@ -54,17 +54,20 @@
         }
 
         input[type="number"],
-        textarea {
+        textarea,
+        select {
             width: 100%;
             padding: 12px;
             border: 2px solid #ddd;
             border-radius: 6px;
             font-size: 1rem;
             transition: border-color 0.3s;
+            background: white;
         }
 
         input[type="number"]:focus,
-        textarea:focus {
+        textarea:focus,
+        select:focus {
             outline: none;
             border-color: #667eea;
         }
@@ -291,13 +294,113 @@
             font-size: 0.9rem;
             margin-top: 10px;
         }
+
+        .settings-link {
+            text-align: center;
+            margin-top: 15px;
+        }
+
+        .settings-link a {
+            color: #667eea;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+
+        .settings-link a:hover {
+            text-decoration: underline;
+        }
+
+        .settings-section {
+            display: none;
+            background: #f8f9fa;
+            padding: 30px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+
+        .settings-section.active {
+            display: block;
+        }
+
+        .settings-section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+        }
+
+        .settings-section textarea {
+            min-height: 80px;
+        }
+
+        .settings-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        .settings-buttons button {
+            padding: 10px 25px;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn-save {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-save:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-reset {
+            background: white;
+            color: #555;
+            border-color: #ddd;
+        }
+
+        .btn-reset:hover {
+            border-color: #999;
+        }
+
+        .btn-back {
+            background: white;
+            color: #667eea;
+            border-color: #667eea;
+        }
+
+        .btn-back:hover {
+            background: #f0f2ff;
+        }
+
+        .settings-saved {
+            text-align: center;
+            color: #28a745;
+            font-weight: 600;
+            margin-top: 10px;
+            display: none;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🎨 Art Deco Image Generator</h1>
+        <h1>Image Generator</h1>
 
         <div class="input-section" id="inputSection">
+            <div class="form-group">
+                <label for="provider">Provider:</label>
+                <select id="provider">
+                    <option value="gemini">Nano Banana Pro</option>
+                    <option value="midjourney">Midjourney</option>
+                </select>
+            </div>
+
             <div class="form-group">
                 <label for="imageCount">Number of Images:</label>
                 <input type="number" id="imageCount" value="16" min="1" max="120">
@@ -309,7 +412,28 @@
             </div>
 
             <button class="submit-btn" id="submitBtn">Generate Images</button>
-            <p class="info-text">Images will be generated in the style of vintage 1920s Art Deco travel posters</p>
+            <div class="settings-link"><a href="#" id="settingsLink">Settings</a></div>
+        </div>
+
+        <div class="settings-section" id="settingsSection">
+            <h2>Settings</h2>
+
+            <div class="form-group">
+                <label for="geminiTemplate">Nano Banana Pro Prompt Template:</label>
+                <textarea id="geminiTemplate" placeholder="Leave empty for no template. The user prompt will be appended after this text."></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="midjourneyTemplate">Midjourney Prompt Template:</label>
+                <textarea id="midjourneyTemplate" placeholder="Style description appended to prompts for Midjourney generation."></textarea>
+            </div>
+
+            <div class="settings-buttons">
+                <button class="btn-save" id="saveSettingsBtn">Save</button>
+                <button class="btn-reset" id="resetSettingsBtn">Reset to Defaults</button>
+                <button class="btn-back" id="backFromSettingsBtn">Back</button>
+            </div>
+            <div class="settings-saved" id="settingsSaved">Settings saved!</div>
         </div>
 
         <div class="error-message" id="errorMessage"></div>
@@ -334,6 +458,81 @@
         let generationId = null;
         let totalImages = 0;
         let completedImages = 0;
+
+        // Default Midjourney prompt template (existing Art Deco style)
+        const DEFAULT_MIDJOURNEY_TEMPLATE = 'In the style of a vintage 1920 Art Deco travel poster. Bold geometric shapes, limited color palette, strong lines, sophisticated retro futurist style.';
+
+        // Settings management
+        function getSettings() {
+            try {
+                const stored = localStorage.getItem('imageGenSettings');
+                if (stored) return JSON.parse(stored);
+            } catch (e) {
+                console.error('Failed to load settings:', e);
+            }
+            return { geminiTemplate: '', midjourneyTemplate: DEFAULT_MIDJOURNEY_TEMPLATE };
+        }
+
+        function saveSettings(settings) {
+            localStorage.setItem('imageGenSettings', JSON.stringify(settings));
+        }
+
+        function resetSettings() {
+            const defaults = { geminiTemplate: '', midjourneyTemplate: DEFAULT_MIDJOURNEY_TEMPLATE };
+            saveSettings(defaults);
+            return defaults;
+        }
+
+        // Provider helpers
+        function getBatchSize(provider) {
+            return provider === 'midjourney' ? 4 : 1;
+        }
+
+        function getMaxConcurrency(provider) {
+            return provider === 'midjourney' ? 15 : 10;
+        }
+
+        function getSelectedProvider() {
+            const el = document.getElementById('provider');
+            return el ? el.value : 'gemini';
+        }
+
+        // Persist provider selection
+        function loadProviderSelection() {
+            try {
+                const saved = localStorage.getItem('imageGenProvider');
+                if (saved) {
+                    const el = document.getElementById('provider');
+                    if (el) el.value = saved;
+                }
+            } catch (e) {
+                console.error('Failed to load provider selection:', e);
+            }
+        }
+
+        function saveProviderSelection(provider) {
+            localStorage.setItem('imageGenProvider', provider);
+        }
+
+        // Concurrency limiter: run tasks with max concurrent limit
+        async function runWithConcurrency(taskFns, maxConcurrent) {
+            const results = [];
+            let index = 0;
+
+            async function runNext() {
+                while (index < taskFns.length) {
+                    const currentIndex = index++;
+                    results[currentIndex] = await taskFns[currentIndex]().catch(e => ({ error: e }));
+                }
+            }
+
+            const workers = [];
+            for (let i = 0; i < Math.min(maxConcurrent, taskFns.length); i++) {
+                workers.push(runNext());
+            }
+            await Promise.all(workers);
+            return results;
+        }
 
         // Get URL parameters
         function getUrlParams() {
@@ -452,25 +651,25 @@
             }
         }
 
-        // Generate a batch of 4 images with timeout
-        async function generateBatch(id, baseSequence, prompt) {
-            console.log(`[Batch ${baseSequence}-${baseSequence + 3}] Starting generation for prompt:`, prompt);
+        // Generate a batch of images with timeout
+        async function generateBatch(id, baseSequence, prompt, provider, promptTemplate) {
+            const batchSize = getBatchSize(provider);
+            console.log(`[Batch ${baseSequence}] Starting generation (${provider}, batch size ${batchSize}) for prompt:`, prompt);
 
             // 5 minute timeout for image generation (APIFRAME polling can take a while)
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000);
 
             try {
+                const body = { id, baseSequence, prompt, provider };
+                if (promptTemplate) body.promptTemplate = promptTemplate;
+
                 const response = await fetch(`/api/generate`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({
-                        id,
-                        baseSequence,
-                        prompt
-                    }),
+                    body: JSON.stringify(body),
                     signal: controller.signal
                 });
 
@@ -523,6 +722,11 @@
         async function handleGenerate() {
             const requestedCount = parseInt(document.getElementById('imageCount').value);
             const promptsText = document.getElementById('prompts').value.trim();
+            const provider = getSelectedProvider();
+            const settings = getSettings();
+            const promptTemplate = provider === 'gemini' ? settings.geminiTemplate : settings.midjourneyTemplate;
+            const batchSize = getBatchSize(provider);
+            const maxConcurrency = getMaxConcurrency(provider);
 
             if (requestedCount > 120) {
                 showError('Maximum of 120 images allowed. Please reduce your image count.');
@@ -541,14 +745,17 @@
                 return;
             }
 
-            // Round up to multiple of 4 (each API call generates 4 images)
-            const imageCount = Math.ceil(requestedCount / 4) * 4;
-            const totalBatches = imageCount / 4;
+            // Round up to multiple of batchSize
+            const imageCount = Math.ceil(requestedCount / batchSize) * batchSize;
+            const totalBatches = imageCount / batchSize;
 
             console.log('Starting generation:', {
                 requested: requestedCount,
                 actual: imageCount,
                 batches: totalBatches,
+                batchSize,
+                maxConcurrency,
+                provider,
                 prompts: prompts.length
             });
 
@@ -569,16 +776,16 @@
                 grid.appendChild(createImageCard(i));
             }
 
-            // Calculate batches per prompt (each batch = 4 images)
+            // Calculate batches per prompt
             const batchesPerPrompt = Math.floor(totalBatches / prompts.length);
             const remainder = totalBatches % prompts.length;
 
             console.log(`Distributing ${totalBatches} batches across ${prompts.length} prompts: ${batchesPerPrompt} each, ${remainder} extra`);
 
-            // Generate images in batches
+            // Build task functions for concurrency limiter
             let baseSequence = 1;
-            const promises = [];
             let completedImages = 0;
+            const taskFns = [];
 
             for (let i = 0; i < prompts.length; i++) {
                 const batchCount = batchesPerPrompt + (i < remainder ? 1 : 0);
@@ -586,39 +793,39 @@
 
                 for (let j = 0; j < batchCount; j++) {
                     const batchBase = baseSequence;
-                    baseSequence += 4;
+                    baseSequence += batchSize;
 
-                    const promise = generateBatch(generationId, batchBase, prompt)
-                        .then(data => {
-                            // Update all 4 image cards from this batch
-                            for (const img of data.images) {
-                                updateImageCard(img.sequence, img.imageUrl, data.prompt);
-                                completedImages++;
-                                updateProgress(completedImages, imageCount);
-                            }
-                        })
-                        .catch(error => {
-                            console.error(`Failed to generate batch ${batchBase}:`, error);
-                            // Mark all 4 cards in this batch as failed
-                            for (let k = 0; k < 4; k++) {
-                                const seq = batchBase + k;
-                                const card = document.getElementById(`image-${seq}`);
-                                if (card) {
-                                    card.className = 'image-card';
-                                    const errMsg = error.message || 'Unknown error';
-                                    const shortErr = errMsg.length > 80 ? errMsg.substring(0, 80) + '...' : errMsg;
-                                    card.innerHTML = `<div style="padding: 10px; color: red; text-align: center; font-size: 0.8rem; overflow: hidden;">Failed: ${shortErr}</div>`;
+                    taskFns.push(() =>
+                        generateBatch(generationId, batchBase, prompt, provider, promptTemplate)
+                            .then(data => {
+                                // Update image cards from this batch
+                                for (const img of data.images) {
+                                    updateImageCard(img.sequence, img.imageUrl, data.prompt);
+                                    completedImages++;
+                                    updateProgress(completedImages, imageCount);
                                 }
-                                completedImages++;
-                                updateProgress(completedImages, imageCount);
-                            }
-                        });
-
-                    promises.push(promise);
+                            })
+                            .catch(error => {
+                                console.error(`Failed to generate batch ${batchBase}:`, error);
+                                // Mark cards in this batch as failed
+                                for (let k = 0; k < batchSize; k++) {
+                                    const seq = batchBase + k;
+                                    const card = document.getElementById(`image-${seq}`);
+                                    if (card) {
+                                        card.className = 'image-card';
+                                        const errMsg = error.message || 'Unknown error';
+                                        const shortErr = errMsg.length > 80 ? errMsg.substring(0, 80) + '...' : errMsg;
+                                        card.innerHTML = `<div style="padding: 10px; color: red; text-align: center; font-size: 0.8rem; overflow: hidden;">Failed: ${shortErr}</div>`;
+                                    }
+                                    completedImages++;
+                                    updateProgress(completedImages, imageCount);
+                                }
+                            })
+                    );
                 }
             }
 
-            await Promise.allSettled(promises);
+            await runWithConcurrency(taskFns, maxConcurrency);
             console.log('All batches processed');
         }
 
@@ -663,6 +870,22 @@
             console.log('All images loaded');
         }
 
+        // Settings UI
+        function showSettings() {
+            document.getElementById('inputSection').style.display = 'none';
+            document.getElementById('settingsSection').classList.add('active');
+
+            const settings = getSettings();
+            document.getElementById('geminiTemplate').value = settings.geminiTemplate || '';
+            document.getElementById('midjourneyTemplate').value = settings.midjourneyTemplate || '';
+        }
+
+        function hideSettings() {
+            document.getElementById('settingsSection').classList.remove('active');
+            document.getElementById('inputSection').style.display = '';
+            document.getElementById('settingsSaved').style.display = 'none';
+        }
+
         // Initialize
         window.addEventListener('DOMContentLoaded', () => {
             const params = getUrlParams();
@@ -674,8 +897,44 @@
                 // Gallery view mode
                 handleView(params.id, params.count);
             } else {
-                // Generation mode
+                // Generation mode - set up event listeners
+                loadProviderSelection();
+
+                document.getElementById('provider').addEventListener('change', (e) => {
+                    saveProviderSelection(e.target.value);
+                });
+
                 document.getElementById('submitBtn').addEventListener('click', handleGenerate);
+
+                document.getElementById('settingsLink').addEventListener('click', (e) => {
+                    e.preventDefault();
+                    showSettings();
+                });
+
+                document.getElementById('saveSettingsBtn').addEventListener('click', () => {
+                    saveSettings({
+                        geminiTemplate: document.getElementById('geminiTemplate').value,
+                        midjourneyTemplate: document.getElementById('midjourneyTemplate').value,
+                    });
+                    const saved = document.getElementById('settingsSaved');
+                    saved.style.display = 'block';
+                    setTimeout(() => { saved.style.display = 'none'; }, 2000);
+                });
+
+                document.getElementById('resetSettingsBtn').addEventListener('click', () => {
+                    const defaults = resetSettings();
+                    document.getElementById('geminiTemplate').value = defaults.geminiTemplate;
+                    document.getElementById('midjourneyTemplate').value = defaults.midjourneyTemplate;
+                    const saved = document.getElementById('settingsSaved');
+                    saved.textContent = 'Settings reset to defaults!';
+                    saved.style.display = 'block';
+                    setTimeout(() => {
+                        saved.textContent = 'Settings saved!';
+                        saved.style.display = 'none';
+                    }, 2000);
+                });
+
+                document.getElementById('backFromSettingsBtn').addEventListener('click', hideSettings);
             }
         });
     </script>

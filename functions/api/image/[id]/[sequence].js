@@ -53,7 +53,7 @@ export async function onRequestGet(context) {
       const base64 = arrayBufferToBase64(arrayBuffer);
 
       return new Response(JSON.stringify({
-        imageUrl: `data:image/png;base64,${base64}`,
+        imageUrl: `data:${object.httpMetadata?.contentType || 'image/png'};base64,${base64}`,
         prompt,
         sequence,
         id,

@@ -13,10 +13,10 @@ preview_bucket_name = "midjourney-images-preview"
 # Environment variables
 # Set these using: wrangler secret put <KEY_NAME>
 #
-# Required:
-# - APIFRAME_API_KEY: Your APIFRAME API key (get it from https://apiframe.ai)
+# Required (at least one):
+# - GEMINI_API_KEY: Google Gemini API key for Nano Banana Pro image generation
+# - APIFRAME_API_KEY: Your APIFRAME API key for Midjourney (get it from https://apiframe.ai)
 #
-# The app uses APIFRAME (https://apiframe.ai) for Midjourney image generation
-# Endpoints:
-# - Imagine: https://api.apiframe.pro/imagine
-# - Fetch: https://api.apiframe.pro/fetch
+# Providers:
+# - Nano Banana Pro (default): Uses Google Gemini (gemini-3-pro-image-preview)
+# - Midjourney: Uses APIFRAME (https://apiframe.ai)

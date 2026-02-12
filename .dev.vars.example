@@ -2,6 +2,10 @@
 # Copy this file to .dev.vars and fill in your actual values
 # .dev.vars is gitignored and should NOT be committed
 
-# Required: Your APIFRAME API key
+# Google Gemini API key for Nano Banana Pro provider (default)
+# Get your API key from: https://aistudio.google.com/apikey
+GEMINI_API_KEY=your_key_here
+
+# APIFRAME API key for Midjourney provider
 # Get your API key from: https://apiframe.ai/dashboard
 APIFRAME_API_KEY=your_api_key_here

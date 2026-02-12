@@ -2,7 +2,9 @@
  * API Function: Generate Image Batch
  * POST /api/generate
  *
- * Each APIFRAME call generates 4 images. This endpoint handles a batch of 4.
+ * Supports two providers:
+ * - "gemini" (default): Uses Google Gemini, returns 1 image per call
+ * - "midjourney": Uses APIFRAME/Midjourney, returns 4 images per call
  */
 
 // Retry configuration for 429 and 5xx errors
@@ -69,9 +71,9 @@ export async function onRequestPost(context) {
   };
 
   try {
-    const { id, baseSequence, prompt } = await request.json();
+    const { id, baseSequence, prompt, provider = 'gemini', promptTemplate } = await request.json();
 
-    console.log(`[Generate] ID: ${id}, BaseSequence: ${baseSequence}, Prompt: ${prompt}`);
+    console.log(`[Generate] ID: ${id}, BaseSequence: ${baseSequence}, Provider: ${provider}, Prompt: ${prompt}`);
 
     if (!id || !baseSequence || !prompt) {
       return new Response(JSON.stringify({ error: 'Missing required fields: id, baseSequence, prompt' }), {
@@ -80,20 +82,29 @@ export async function onRequestPost(context) {
       });
     }
 
-    // Build full prompt with style description and Midjourney parameters
-    const fullPrompt = `${prompt}. ${STYLE_DESCRIPTION} ${MOODBOARD_PROFILE} ${STYLE_TAGS}`;
-    console.log(`[Generate] Full prompt: ${fullPrompt}`);
+    let imageDataArray;
 
-    // Generate images using APIFRAME Midjourney API (returns 4 images)
-    const imageDataArray = await generateWithMidjourney(fullPrompt, env);
-    console.log(`[Generate] APIFRAME API returned ${imageDataArray.length} images`);
+    if (provider === 'midjourney') {
+      // Build full prompt with style description and Midjourney parameters
+      const fullPrompt = `${prompt}. ${STYLE_DESCRIPTION} ${MOODBOARD_PROFILE} ${STYLE_TAGS}`;
+      console.log(`[Generate] Midjourney full prompt: ${fullPrompt}`);
+      imageDataArray = await generateWithMidjourney(fullPrompt, env);
+    } else {
+      // Gemini: combine promptTemplate + user prompt
+      const fullPrompt = promptTemplate ? `${promptTemplate}\n\n${prompt}` : prompt;
+      console.log(`[Generate] Gemini full prompt: ${fullPrompt}`);
+      imageDataArray = await generateWithGemini(fullPrompt, env);
+    }
 
-    // Store all 4 images in R2 and build response
+    console.log(`[Generate] Provider returned ${imageDataArray.length} images`);
+
+    // Store images in R2 and build response
     const images = [];
     for (let i = 0; i < imageDataArray.length; i++) {
       const sequence = baseSequence + i;
       const r2Key = `generated/${id}/${sequence}`;
-      await storeImageInR2(env.IMAGE_BUCKET, r2Key, imageDataArray[i].imageBuffer, prompt);
+      const contentType = imageDataArray[i].mimeType || 'image/png';
+      await storeImageInR2(env.IMAGE_BUCKET, r2Key, imageDataArray[i].imageBuffer, prompt, contentType);
       console.log(`[Generate] Stored in R2: ${r2Key}`);
 
       images.push({
@@ -132,6 +143,76 @@ export async function onRequestOptions(context) {
       'Access-Control-Allow-Headers': 'Content-Type',
     },
   });
+}
+
+/**
+ * Generate an image using Google Gemini (gemini-3-pro-image-preview)
+ * Returns an array with 1 image (Gemini generates 1 per request)
+ */
+async function generateWithGemini(prompt, env) {
+  console.log('[Gemini] Starting generation with prompt:', prompt);
+
+  if (!env.GEMINI_API_KEY) {
+    throw new Error(`GEMINI_API_KEY not configured. Available env keys: ${Object.keys(env || {}).join(', ') || 'none'}`);
+  }
+
+  const apiEndpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent';
+
+  const response = await fetchWithRetry(apiEndpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': env.GEMINI_API_KEY,
+    },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        responseModalities: ['IMAGE'],
+        imageConfig: { aspectRatio: '1:1', imageSize: '2K' },
+      },
+    }),
+  }, 'Gemini');
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('[Gemini] API error:', response.status, errorText);
+    throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
+  }
+
+  const data = await response.json();
+  console.log('[Gemini] Response received, parsing inline_data');
+
+  // Extract inline_data from the response
+  const candidates = data.candidates;
+  if (!candidates || candidates.length === 0) {
+    throw new Error(`No candidates in Gemini response: ${JSON.stringify(data)}`);
+  }
+
+  const parts = candidates[0].content?.parts;
+  if (!parts || parts.length === 0) {
+    throw new Error(`No parts in Gemini response candidate: ${JSON.stringify(candidates[0])}`);
+  }
+
+  // Find the part with inline_data (image)
+  const imagePart = parts.find(p => p.inline_data);
+  if (!imagePart) {
+    throw new Error(`No inline_data in Gemini response parts: ${JSON.stringify(parts.map(p => Object.keys(p)))}`);
+  }
+
+  const { mime_type, data: base64Data } = imagePart.inline_data;
+  console.log(`[Gemini] Got image: mime_type=${mime_type}, base64 length=${base64Data.length}`);
+
+  // Convert base64 to ArrayBuffer
+  const binaryString = atob(base64Data);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  const imageBuffer = bytes.buffer;
+
+  console.log(`[Gemini] Image decoded, size: ${imageBuffer.byteLength} bytes`);
+
+  return [{ imageBuffer, mimeType: mime_type }];
 }
 
 /**
@@ -272,12 +353,12 @@ async function pollForResult(taskId, env, maxAttempts = 60, delayMs = 5000) {
 /**
  * Store image in R2 with metadata
  */
-async function storeImageInR2(bucket, key, imageBuffer, prompt) {
-  console.log(`[R2] Storing image: ${key}, size: ${imageBuffer.byteLength} bytes`);
+async function storeImageInR2(bucket, key, imageBuffer, prompt, contentType = 'image/png') {
+  console.log(`[R2] Storing image: ${key}, size: ${imageBuffer.byteLength} bytes, type: ${contentType}`);
 
   await bucket.put(key, imageBuffer, {
     httpMetadata: {
-      contentType: 'image/png',
+      contentType,
     },
     customMetadata: {
       prompt,
